@@ -1,34 +1,32 @@
 import streamlit as st
 import pandas as pd
 
-# Configs iniciais da página
+# --- Configurações Iniciais da Página ---
 st.set_page_config(
     page_title="Dashboard de Cartórios",
     layout="wide"
 )
 
-# Função pra carregar os dados de cadastro
+# --- Funções de Carregamento de Dados ---
+
 @st.cache_data
 def carregar_cadastro():
-    """Carrega a lista completa de cartórios."""
+    """Carrega a lista completa de cartórios (do GitHub)."""
+    # Este arquivo DEVE estar no seu repositório GitHub
     df = pd.read_csv("cadastro_cartorios.csv")
     return df
 
 @st.cache_data
-import streamlit as st
-import pandas as pd
-
-# ... (aqui fica o st.set_page_config e a função carregar_cadastro, que não mudam) ...
-
-@st.cache_data
 def carregar_e_limpar_financeiro():
-    # ESSE É O SEU NOVO LINK DE DOWNLOAD DIRETO DO GOOGLE DRIVE
+    """Carrega os dados financeiros (do Google Drive)."""
+    
+    # Link de download direto do seu arquivo no Google Drive
     URL_FINANCEIRO = "https://drive.google.com/uc?export=download&id=110srBvTbBOWr5ii6atT2zv3PMh5bXML_"
     
     # O Pandas vai ler o CSV direto da nuvem
     df = pd.read_csv(URL_FINANCEIRO)
 
-    # Limpeza dos dados (continua igual)
+    # Limpeza dos dados
     coluna_valores = df['Valor arrecadação'].astype(str).str.strip()
     coluna_valores = coluna_valores.str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
     df['Valor arrecadação'] = pd.to_numeric(coluna_valores, errors='coerce')
@@ -39,17 +37,16 @@ def carregar_e_limpar_financeiro():
     
     return df
 
-# ... (aqui fica o resto do seu código, que não muda) ...
-
-# Carregamento inicial dos dados
+# --- Carregamento Inicial dos Dados ---
 try:
     df_cartorios = carregar_cadastro()
     df_financeiro_completo = carregar_e_limpar_financeiro()
 except Exception as e:
     st.error(f"Erro ao carregar ou processar os arquivos: {e}")
+    st.exception(e) # Mostra mais detalhes do erro
     st.stop()
 
-# Barra lateral onde seleciona os Estados
+# --- Barra Lateral (Sidebar) ---
 st.sidebar.header("Encontre um Cartório")
 estado_selecionado = st.sidebar.selectbox("1. Selecione o Estado:", sorted(df_cartorios["UF"].unique()))
 cidades_no_estado = sorted(df_cartorios[df_cartorios["UF"] == estado_selecionado]["Cidade"].unique())
@@ -57,6 +54,7 @@ cidade_selecionada = st.sidebar.selectbox("2. Selecione a Cidade:", cidades_no_e
 cartorios_na_cidade = df_cartorios[df_cartorios["Cidade"] == cidade_selecionada]
 cartorio_selecionado_nome = st.sidebar.selectbox("3. Selecione o Cartório:", cartorios_na_cidade["Denominação"].unique())
 
+# --- Página Principal ---
 st.title("🔎 Painel de Análise de Serventias Extrajudiciais")
 st.markdown("Use os filtros para selecionar um cartório e visualizar sua análise financeira individual.")
 
@@ -86,7 +84,7 @@ else:
         df_filtrado_agregado = df_financeiro_filtrado.set_index('Dat. início do período')['Valor arrecadação'].resample('M').sum().reset_index()
         df_filtrado_agregado.rename(columns={'Dat. início do período': 'Mês'}, inplace=True)
     else:
-        df_filtrado_agregado = pd.DataFrame()
+        df_filtrado_agregado = pd.DataFrame() # Cria um dataframe vazio se não houver dados
     
     if not df_filtrado_agregado.empty and len(df_filtrado_agregado) >= 2:
         ultimo_valor = df_filtrado_agregado['Valor arrecadação'].iloc[-1]
