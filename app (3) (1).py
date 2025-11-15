@@ -15,10 +15,20 @@ def carregar_cadastro():
     return df
 
 @st.cache_data
-def carregar_e_limpar_financeiro():
-    df = pd.read_csv("dados_financeiros.csv")
+import streamlit as st
+import pandas as pd
 
-    # Limpeza dos dados
+# ... (aqui fica o st.set_page_config e a função carregar_cadastro, que não mudam) ...
+
+@st.cache_data
+def carregar_e_limpar_financeiro():
+    # ESSE É O SEU NOVO LINK DE DOWNLOAD DIRETO DO GOOGLE DRIVE
+    URL_FINANCEIRO = "https://drive.google.com/uc?export=download&id=110srBvTbBOWr5ii6atT2zv3PMh5bXML_"
+    
+    # O Pandas vai ler o CSV direto da nuvem
+    df = pd.read_csv(URL_FINANCEIRO)
+
+    # Limpeza dos dados (continua igual)
     coluna_valores = df['Valor arrecadação'].astype(str).str.strip()
     coluna_valores = coluna_valores.str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
     df['Valor arrecadação'] = pd.to_numeric(coluna_valores, errors='coerce')
@@ -28,6 +38,8 @@ def carregar_e_limpar_financeiro():
     df.dropna(subset=['Valor arrecadação', 'Dat. início do período'], inplace=True)
     
     return df
+
+# ... (aqui fica o resto do seu código, que não muda) ...
 
 # Carregamento inicial dos dados
 try:
@@ -97,4 +109,5 @@ else:
         st.warning("Não foram encontrados dados de arrecadação para o cartório selecionado.")
         
     st.subheader("Dados Detalhados (do Cartório Selecionado)")
+
     st.dataframe(df_financeiro_filtrado)
