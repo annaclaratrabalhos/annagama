@@ -1,4 +1,4 @@
- import streamlit as st
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 
@@ -149,3 +149,4 @@ if not df_filtrado_agregado.empty and len(df_filtrado_agregado) >= 1:
 
 else:
     st.warning("Não foram encontrados dados financeiros suficientes para os filtros selecionados.")
+
