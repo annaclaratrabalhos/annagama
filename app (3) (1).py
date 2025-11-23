@@ -127,7 +127,10 @@ df_financeiro_filtrado = df_financeiro_completo[df_financeiro_completo['CNS'].is
 if not df_financeiro_filtrado.empty:
     df_filtrado_agregado = df_financeiro_filtrado.groupby('Dat. início do período')['Valor arrecadação'].sum().reset_index()
     df_filtrado_agregado.rename(columns={'Dat. início do período': 'Mês'}, inplace=True)
-    df_filtrado_agregado = df_filtrado_agregado.sort_values('Mês')
+    
+    # --- LINHA NOVA OBRIGATÓRIA ---
+    # Ordena os meses cronologicamente para o gráfico não ir e voltar
+    df_filtrado_agregado = df_filtrado_agregado.sort_values(by='Mês')
 else:
     df_filtrado_agregado = pd.DataFrame()
 
@@ -183,3 +186,4 @@ if not df_filtrado_agregado.empty and len(df_filtrado_agregado) >= 1:
 
 else:
     st.warning(f"Não foram encontrados dados financeiros suficientes para {estado_selecionado} neste período.")
+
