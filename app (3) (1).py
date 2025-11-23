@@ -1,30 +1,23 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-# --- Configurações Iniciais da Página ---
+# Configs iniciais da página
 st.set_page_config(
     page_title="Dashboard de Cartórios",
     layout="wide"
 )
 
-# --- Funções de Carregamento de Dados ---
-
+# Função pra carregar os dados de cadastro
 @st.cache_data
 def carregar_cadastro():
-    """Carrega a lista completa de cartórios (do GitHub)."""
-    # Este arquivo DEVE estar no seu repositório GitHub
+    """Carrega a lista completa de cartórios."""
     df = pd.read_csv("cadastro_cartorios.csv")
     return df
 
 @st.cache_data
 def carregar_e_limpar_financeiro():
-    """Carrega os dados financeiros (do Google Drive)."""
-    
-    # Link de download direto do seu arquivo no Google Drive
-    URL_FINANCEIRO = "https://drive.google.com/uc?export=download&id=110srBvTbBOWr5ii6atT2zv3PMh5bXML_"
-    
-    # O Pandas vai ler o CSV direto da nuvem
-    df = pd.read_csv(URL_FINANCEIRO)
+    df = pd.read_csv("dados_financeiros.csv")
 
     # Limpeza dos dados
     coluna_valores = df['Valor arrecadação'].astype(str).str.strip()
@@ -35,77 +28,123 @@ def carregar_e_limpar_financeiro():
     # Remove qualquer linha que tenha falhado na conversão
     df.dropna(subset=['Valor arrecadação', 'Dat. início do período'], inplace=True)
     
+    df = df[df['Valor arrecadação'] > 0]
+    
     return df
 
-# --- Carregamento Inicial dos Dados ---
+# Carregamento inicial dos dados
 try:
     df_cartorios = carregar_cadastro()
     df_financeiro_completo = carregar_e_limpar_financeiro()
 except Exception as e:
     st.error(f"Erro ao carregar ou processar os arquivos: {e}")
-    st.exception(e) # Mostra mais detalhes do erro
     st.stop()
 
-# --- Barra Lateral (Sidebar) ---
-st.sidebar.header("Encontre um Cartório")
-estado_selecionado = st.sidebar.selectbox("1. Selecione o Estado:", sorted(df_cartorios["UF"].unique()))
-cidades_no_estado = sorted(df_cartorios[df_cartorios["UF"] == estado_selecionado]["Cidade"].unique())
-cidade_selecionada = st.sidebar.selectbox("2. Selecione a Cidade:", cidades_no_estado)
-cartorios_na_cidade = df_cartorios[df_cartorios["Cidade"] == cidade_selecionada]
-cartorio_selecionado_nome = st.sidebar.selectbox("3. Selecione o Cartório:", cartorios_na_cidade["Denominação"].unique())
+# --- BARRA LATERAL ---
+st.sidebar.header("Configurações de Análise")
 
-# --- Página Principal ---
-st.title("🔎 Painel de Análise de Serventias Extrajudiciais")
-st.markdown("Use os filtros para selecionar um cartório e visualizar sua análise financeira individual.")
+# 1. Seleção de Estado (Sempre obrigatória para filtrar o financeiro corretamente)
+ufs_disponiveis = sorted(df_cartorios["UF"].unique())
+estado_selecionado = st.sidebar.selectbox("1. Selecione o Estado:", ufs_disponiveis)
 
-# Se nenhum cartório for selecionado, mostra um aviso
-if not cartorio_selecionado_nome:
-    st.warning("Por favor, selecione um cartório na barra lateral para começar a análise.")
+# 2. Pergunta se você quer ver um específico ou o geral
+modo_analise = st.sidebar.radio(
+    "Nível de Detalhe:",
+    ("Visão Geral do Estado", "Cartório Específico")
+)
+
+cartorio_selecionado_nome = None
+cns_para_analise = []
+
+if modo_analise == "Cartório Específico":
+    # Lógica antiga de selecionar cidade e nome
+    cidades_no_estado = sorted(df_cartorios[df_cartorios["UF"] == estado_selecionado]["Cidade"].unique())
+    cidade_selecionada = st.sidebar.selectbox("2. Selecione a Cidade:", cidades_no_estado)
+    
+    cartorios_na_cidade = df_cartorios[df_cartorios["Cidade"] == cidade_selecionada]
+    cartorio_selecionado_nome = st.sidebar.selectbox("3. Selecione o Cartório:", cartorios_na_cidade["Denominação"].unique())
+    
+    if cartorio_selecionado_nome:
+        info_cartorio = df_cartorios[df_cartorios["Denominação"] == cartorio_selecionado_nome].iloc[0]
+        cns_para_analise = [info_cartorio['CNS']]
 else:
-    # Mostra as informações do cartório selecionado
-    info_cartorio = df_cartorios[df_cartorios["Denominação"] == cartorio_selecionado_nome].iloc[0]
-    st.header(f"Informações de: {info_cartorio['Denominação']}")
+    cns_para_analise = df_cartorios[df_cartorios["UF"] == estado_selecionado]['CNS'].unique().tolist()
+    st.sidebar.info(f"Analisando dados agregados de {len(cns_para_analise)} cartórios em {estado_selecionado}.")
+
+
+st.title(f"📊 Painel de Análise - {estado_selecionado}")
+
+# Lógica de Exibição
+if modo_analise == "Cartório Específico" and not cartorio_selecionado_nome:
+    st.warning("Por favor, selecione um cartório na barra lateral.")
+    st.stop()
+
+# Se for cartório específico, mostra os cards de detalhes
+if modo_analise == "Cartório Específico" and cartorio_selecionado_nome:
+    st.header(f"Detalhes: {info_cartorio['Denominação']}")
     col1, col2, col3 = st.columns(3)
     col1.metric("Cidade", info_cartorio['Cidade'])
     col2.metric("Status", info_cartorio['Status'])
     col3.metric("Tipo", info_cartorio['Tipo'])
-
     st.markdown("---")
-    st.header("Análise Financeira do Cartório Selecionado")
 
-    # 1. Encontra o CNS do cartório selecionado
-    cns_selecionado = info_cartorio['CNS']
+# 1. Filtra o financeiro baseando-se na lista de CNS (seja 1 ou seja 1000)
+df_financeiro_filtrado = df_financeiro_completo[df_financeiro_completo['CNS'].isin(cns_para_analise)]
+
+# 2. Agrega os dados por mês
+if not df_financeiro_filtrado.empty:
+    df_filtrado_agregado = df_financeiro_filtrado.groupby('Dat. início do período')['Valor arrecadação'].sum().reset_index()
+    df_filtrado_agregado.rename(columns={'Dat. início do período': 'Mês'}, inplace=True)
+else:
+    df_filtrado_agregado = pd.DataFrame()
+
+titulo_secao = "Análise Financeira Global" if modo_analise == "Visão Geral do Estado" else "Análise Financeira Individual"
+st.header(titulo_secao)
+
+if not df_filtrado_agregado.empty and len(df_filtrado_agregado) >= 1:
     
-    # 2. Filtra o DataFrame financeiro para conter apenas os dados daquele CNS
-    df_financeiro_filtrado = df_financeiro_completo[df_financeiro_completo['CNS'] == cns_selecionado]
+    # Cálculo de Variação (Último mês vs Penúltimo)
+    ultimo_valor = df_filtrado_agregado['Valor arrecadação'].iloc[-1]
     
-    # 3. Agrega os dados filtrados por mês
-    if not df_financeiro_filtrado.empty:
-        df_filtrado_agregado = df_financeiro_filtrado.set_index('Dat. início do período')['Valor arrecadação'].resample('M').sum().reset_index()
-        df_filtrado_agregado.rename(columns={'Dat. início do período': 'Mês'}, inplace=True)
-    else:
-        df_filtrado_agregado = pd.DataFrame() # Cria um dataframe vazio se não houver dados
-    
-    if not df_filtrado_agregado.empty and len(df_filtrado_agregado) >= 2:
-        ultimo_valor = df_filtrado_agregado['Valor arrecadação'].iloc[-1]
+    if len(df_filtrado_agregado) >= 2:
         penultimo_valor = df_filtrado_agregado['Valor arrecadação'].iloc[-2]
         variacao = ultimo_valor - penultimo_valor
-        
-        st.metric(
-            label=f"Arrecadação em {df_filtrado_agregado['Mês'].iloc[-1].strftime('%m/%Y')}",
-            value=f"R$ {ultimo_valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'),
-            delta=f"R$ {variacao:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'),
-            help="Variação em relação ao mês anterior."
-        )
+        delta_val = f"R$ {variacao:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
     else:
-        st.warning("Não há dados financeiros suficientes para este cartório para calcular a variação.")
+        delta_val = None
+
+    # Formatação BR para exibir
+    valor_formatado = f"R$ {ultimo_valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    
+    col_metrica, col_vazia = st.columns([1, 2])
+    col_metrica.metric(
+        label=f"Arrecadação Total em {df_filtrado_agregado['Mês'].iloc[-1].strftime('%m/%Y')}",
+        value=valor_formatado,
+        delta=delta_val,
+        help="Comparação com o mês anterior"
+    )
 
     st.subheader("Evolução da Arrecadação Mensal")
-    if not df_filtrado_agregado.empty:
-        st.line_chart(df_filtrado_agregado.set_index('Mês')['Valor arrecadação'])
-    else:
-        st.warning("Não foram encontrados dados de arrecadação para o cartório selecionado.")
-        
-    st.subheader("Dados Detalhados (do Cartório Selecionado)")
+    st.subheader("Evolução da Arrecadação Mensal")
+    
+    fig = px.line(
+        df_filtrado_agregado, 
+        x='Mês', 
+        y='Valor arrecadação',
+        title='Histórico de Arrecadação',
+        markers=True # Adiciona bolinhas nos meses
+    )
+    # Formata o eixo Y para mostrar "R$"
+    fig.update_layout(yaxis_tickprefix = 'R$ ')
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Se quiser ver os dados brutos
+    with st.expander("Ver dados detalhados em tabela"):
+        if modo_analise == "Visão Geral do Estado":
+             st.dataframe(df_filtrado_agregado) # Mostra o resumão por mês
+        else:
+             st.dataframe(df_financeiro_filtrado) # Mostra linha a linha do cartório
 
-    st.dataframe(df_financeiro_filtrado)
+else:
+    st.warning("Não foram encontrados dados financeiros suficientes para os filtros selecionados.")
